@@ -18,3 +18,9 @@ Route::prefix('auth')->group(function () {
         ->middleware('auth:sanctum')
         ->name('auth.logout');
 });
+
+// Dependency Upload Routes
+Route::middleware('auth:sanctum')->prefix('dependency-uploads')->group(function () {
+    Route::post('/', [DependencyUploadController::class, 'store'])->name('dependency.uploads.store');
+    
+});
