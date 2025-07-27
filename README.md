@@ -88,7 +88,13 @@ php artisan queue:work
 ```bash
 php artisan schedule:work
 ```
+### 9. Manually trigger a scan
 
+To manually trigger the dependency scan, run:
+
+```bash
+php artisan app:dependency-scan
+```
 ---
 
 ## 🧪 Run Tests
@@ -144,9 +150,8 @@ A Postman collection (`Opentext.postman_collection.json`) is included.
 3. Upload files: `POST /api/dependency-uploads`
    - Header: `Authorization: Bearer <token>`
    - Payload: Form-data with multiple `files[]`
-      - Body (all fields required, sent as form-data):
-         - `commit_name`: Name or hash of the commit being scanned
-         - `repository_name`: Name of the repository
+   - `commit_name`: Name of the commit (Required)
+   - `repository_name`: Name of the repository (Required)
 
 ---
 
