@@ -11,6 +11,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use App\Models\DependencyFile;
+use App\Models\DependencyUpload;
 use Throwable;
 
 class DependencyUploadJob implements ShouldQueue
@@ -63,9 +64,12 @@ class DependencyUploadJob implements ShouldQueue
     public function failed(Throwable $exception): void
     {
         Log::error(self::class.'@failed', ['error' => $exception->getMessage()]);
-        $this->dependencyFile->upload()->user->notify(new ScanReportUploadFailedNotification(
-            $this->dependencyFile,
-            $exception->getMessage()
-        ));
+        DependencyUpload::find($this->dependencyFile->dependency_upload_id)
+            ?->user
+            ?->notify(new ScanReportUploadFailedNotification(
+                $this->dependencyFile,
+                $exception->getMessage()
+            ));
+       
     }
 }

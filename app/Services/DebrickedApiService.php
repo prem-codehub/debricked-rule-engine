@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Storage;
 class DebrickedApiService
 {
     private const BASE_URL = 'https://debricked.com/api/';
-    
+
     private const ENDPOINTS = [
         'supported_formats' => '1.0/open/files/supported-formats',
         'login' => 'login_check',
@@ -110,9 +110,9 @@ class DebrickedApiService
 
         try {
             $fileContent = Storage::get($attachment->path);
-            
-            if ($fileContent === null) {
-                throw new Exception("Failed to read file content from path: {$attachment->path}");
+
+            if (!$fileContent) {
+                throw new Exception("Failed to read file content from: {$attachment->path}");
             }
 
             $response = Http::timeout(60)
@@ -128,7 +128,7 @@ class DebrickedApiService
             }
 
             $responseData = $response->json();
-            
+
             if (empty($responseData['ciUploadId'])) {
                 throw new Exception('Upload succeeded but no ciUploadId received');
             }
@@ -288,13 +288,13 @@ class DebrickedApiService
 
             if ($response->successful()) {
                 $token = $response->json('token');
-                
+
                 if (empty($token)) {
                     throw new Exception('Authentication succeeded but no token received');
                 }
-                
+
                 $this->token = $token;
-                
+
                 Log::info('DebrickedApiService authenticated successfully');
                 return;
             }

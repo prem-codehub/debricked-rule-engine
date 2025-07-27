@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Models\DependencyUpload;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -39,7 +40,7 @@ class ScanReportUploadFailedNotification extends Notification implements ShouldQ
      */
     public function toMail(object $notifiable): MailMessage
     {
-        $dependencyUpload = $this->dependencyFile->upload();
+        $dependencyUpload = DependencyUpload::find($this->dependencyFile->dependency_upload_id);
         return (new MailMessage)
             ->greeting('Hello, '.($dependencyUpload?->user?->name ?? 'User').'!')
             ->subject('File Upload Failed in Commit: '.$dependencyUpload?->commit_name)
