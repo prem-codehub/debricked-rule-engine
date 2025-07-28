@@ -56,6 +56,12 @@ class DependencyUploadJob implements ShouldQueue
             $this->commitName,
             $this->repoName
         );
+
+        Log::info(self::class.'@handle', [
+            'message' => 'Dependency file uploaded successfully',
+            'dependencyFileId' => $this->dependencyFile->id,
+        ]);
+
     }
 
     /**

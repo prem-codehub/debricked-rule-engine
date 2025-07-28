@@ -82,7 +82,6 @@ class DependencyUploadController extends Controller
                     'path' => $path,
                     'vulnerabilities_found' => 0,
                     'progress' => 0,
-                    'raw_data' => [],
                 ]);
 
                 $paths[] = Storage::url($path);
@@ -91,7 +90,7 @@ class DependencyUploadController extends Controller
             // Update the upload record with stored file paths and mark as complete
             $dependencyUpload->update([
                 'file_paths' => $paths,
-                'status' => 'completed',
+                'status' => 'in_progress',
             ]);
 
             DB::commit();
@@ -101,8 +100,20 @@ class DependencyUploadController extends Controller
 
             return response()->json([
                 'message' => 'Files uploaded successfully.',
-                'upload_paths' => $paths,
+                'upload_id' => $dependencyUpload->id,
+                'status' => $dependencyUpload->status,
+                'repository' => $dependencyUpload->repository_name,
+                'commit' => $dependencyUpload->commit_name,
+                'files' => $dependencyUpload->files->map(function ($file) {
+                    return [
+                        'filename' => $file->filename,
+                        'path' => Storage::url($file->path),
+                        'progress' => $file->progress,
+                        'vulnerabilities_found' => $file->vulnerabilities_found,
+                    ];
+                }),
             ]);
+
 
         } catch (\Throwable $e) {
             DB::rollBack();

@@ -128,7 +128,9 @@ composer install
 ### 4. Set permissions
 
 ```bash
-chmod -R 777 /var/www/html/storage /var/www/html/bootstrap/cache
+chown -R www-data:www-data storage bootstrap/cache
+chmod -R 775 storage bootstrap/cache
+
 ```
 
 ### 5. Stop containers
@@ -141,7 +143,7 @@ docker compose down
 
 ## 🔌 API Usage
 
-A Postman collection (`Opentext.postman_collection.json`) is included.
+A Postman collection (`OpenText-API.postman_collection.json`) is included.
 
 ### Steps:
 

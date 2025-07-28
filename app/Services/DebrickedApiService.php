@@ -4,10 +4,12 @@ namespace App\Services;
 
 use App\Models\DependencyFile;
 use Exception;
+use Illuminate\Contracts\Validation\Rule;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use App\Rules\RuleManager;
 
 class DebrickedApiService
 {
@@ -144,7 +146,7 @@ class DebrickedApiService
             $attachment->update(['ci_upload_id' => $responseData['ciUploadId']]);
 
             // Queue file for scanning
-            $this->queueFileForScan($responseData['ciUploadId']);
+            $this->queueFileForScan($responseData['ciUploadId'], $attachment->dependency_upload_id);
 
             return $responseData;
         } catch (Exception $e) {
@@ -160,7 +162,7 @@ class DebrickedApiService
      * @return array<string, mixed> Queue response data
      * @throws Exception If the API request fails or token is not available
      */
-    public function queueFileForScan(int $ciUploadId): array
+    public function queueFileForScan(int $ciUploadId, int $attachmentId): array
     {
         $this->ensureAuthenticated();
 
@@ -185,6 +187,9 @@ class DebrickedApiService
                 'ci_upload_id' => $ciUploadId,
                 'response' => $responseData,
             ]);
+
+            // Trigger rule evaluation after queuing for scan
+            $this->triggerRuleEvaluation($attachmentId);
 
             return $responseData;
         } catch (Exception $e) {
@@ -396,5 +401,12 @@ class DebrickedApiService
             'line' => $exception->getLine(),
             'trace' => $exception->getTraceAsString(),
         ]);
+    }
+
+    private function triggerRuleEvaluation($dependencyUploadId): void
+    {
+        $dependencyUpload = DependencyFile::where('id', $dependencyUploadId)->first();
+        // Logic to trigger rule evaluation
+        RuleManager::evaluate($dependencyUpload);
     }
 }
