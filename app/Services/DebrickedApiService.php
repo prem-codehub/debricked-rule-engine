@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\DependencyFile;
+use App\Models\DependencyUpload;
 use Exception;
 use Illuminate\Contracts\Validation\Rule;
 use Illuminate\Http\Client\Response;
@@ -96,34 +97,38 @@ class DebrickedApiService
     /**
      * Upload dependency file to the Debricked API.
      *
-     * @param DependencyFile $attachment The file attachment to upload
-     * @param string $commitName The commit name for the upload
-     * @param string $repositoryName The repository name for the upload
+     * @param DependencyUpload $upload The upload record
+     * @param DependencyFile $file The file attachment to upload
      * @return array<string, mixed> Upload response data
      * @throws Exception If the upload fails or token is not available
      */
     public function uploadDependencyFile(
-        DependencyFile $attachment,
-        string $commitName,
-        string $repositoryName
+        DependencyUpload $upload,
+        DependencyFile $file
     ): array {
         $this->ensureAuthenticated();
-        $this->validateUploadParameters($attachment, $commitName, $repositoryName);
+        $this->validateUploadParameters($file, $upload->commit_name, $upload->repository_name);
 
         try {
-            $fileContent = Storage::get($attachment->path);
+            $fileContent = Storage::get($file->path);
 
             if (!$fileContent) {
-                throw new Exception("Failed to read file content from: {$attachment->path}");
+                throw new Exception("Failed to read file content from: {$file->path}");
+            }
+
+            $payload = [
+                'commitName' => $upload->commit_name,
+                'repositoryName' => $upload->repository_name,
+            ];
+
+            if ($upload->ci_upload_id) {
+                $payload['ciUploadId'] = $upload->ci_upload_id;
             }
 
             $response = Http::timeout(60)
                 ->withHeaders(['Authorization' => "Bearer {$this->token}"])
-                ->attach('fileData', $fileContent, $attachment->filename)
-                ->post($this->buildUrl('upload_dependencies'), [
-                    'commitName' => $commitName,
-                    'repositoryName' => $repositoryName,
-                ]);
+                ->attach('fileData', $fileContent, $file->filename)
+                ->post($this->buildUrl('upload_dependencies'), $payload);
 
             if (!$response->successful()) {
                 throw new Exception("Upload failed with status {$response->status()}: {$response->body()}");
@@ -131,22 +136,26 @@ class DebrickedApiService
 
             $responseData = $response->json();
 
-            if (empty($responseData['ciUploadId'])) {
-                throw new Exception('Upload succeeded but no ciUploadId received');
+            // Log the response for debugging
+            Log::info('Dependency file uploaded successfully', [
+                'ci_upload_id' => $upload->ci_upload_id ?? $responseData['ciUploadId'],
+                'file' => $file->filename,
+                'response' => $responseData,
+            ]);
+
+            // If it's the first file upload, store ci_upload_id on the DependencyUpload model
+            if (!$upload->ci_upload_id && !empty($responseData['ciUploadId'])) {
+                $upload->update(['ci_upload_id' => $responseData['ciUploadId']]);
             }
 
             Log::info('Dependency file uploaded successfully', [
-                'attachment_id' => $attachment->id,
-                'ci_upload_id' => $responseData['ciUploadId'],
-                'commit_name' => $commitName,
-                'repository_name' => $repositoryName,
+                'upload_id' => $upload->id,
+                'file_id' => $file->id,
+                'ci_upload_id' => $upload->ci_upload_id ?? $responseData['ciUploadId'],
             ]);
 
-            // Update attachment with CI upload ID
-            $attachment->update(['ci_upload_id' => $responseData['ciUploadId']]);
-
-            // Queue file for scanning
-            $this->queueFileForScan($responseData['ciUploadId'], $attachment->dependency_upload_id);
+            // Queue for scanning
+            //$this->queueFileForScan($upload->ci_upload_id ?? $responseData['ciUploadId'], $upload->id);
 
             return $responseData;
         } catch (Exception $e) {
@@ -159,10 +168,11 @@ class DebrickedApiService
      * Queue a file for scanning in the Debricked system.
      *
      * @param int $ciUploadId The CI upload ID to associate with the file
+     * @param DependencyUpload $dependencyUpload The dependency upload record
      * @return array<string, mixed> Queue response data
      * @throws Exception If the API request fails or token is not available
      */
-    public function queueFileForScan(int $ciUploadId, int $attachmentId): array
+    public function queueFileForScan(int $ciUploadId, DependencyUpload $dependencyUpload): array
     {
         $this->ensureAuthenticated();
 
@@ -172,7 +182,10 @@ class DebrickedApiService
 
         try {
             $response = Http::timeout(30)
-                ->withHeaders(['Authorization' => "Bearer {$this->token}"])
+                ->withHeaders([
+                    'Authorization' => "Bearer {$this->token}",
+                    'Accept' => 'application/json',
+                ])
                 ->post($this->buildUrl('queue_scan'), [
                     'ciUploadId' => $ciUploadId,
                 ]);
@@ -189,7 +202,7 @@ class DebrickedApiService
             ]);
 
             // Trigger rule evaluation after queuing for scan
-            $this->triggerRuleEvaluation($attachmentId);
+            $this->triggerRuleEvaluation($dependencyUpload);
 
             return $responseData;
         } catch (Exception $e) {
@@ -403,9 +416,8 @@ class DebrickedApiService
         ]);
     }
 
-    private function triggerRuleEvaluation($dependencyUploadId): void
+    private function triggerRuleEvaluation($dependencyUpload): void
     {
-        $dependencyUpload = DependencyFile::where('id', $dependencyUploadId)->first();
         // Logic to trigger rule evaluation
         RuleManager::evaluate($dependencyUpload);
     }

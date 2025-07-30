@@ -6,6 +6,7 @@ use App\Services\DebrickedApiService;
 use App\Notifications\ScanReportUploadFailedNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Bus\Batchable;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
@@ -16,13 +17,11 @@ use Throwable;
 
 class DependencyUploadJob implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels,Batchable;
 
     protected $dependencyFile;
 
-    protected $commitName;
-
-    protected $repoName;
+    protected $dependencyUpload;
 
     /**
      * Create a new job instance.
@@ -31,11 +30,11 @@ class DependencyUploadJob implements ShouldQueue
      * @param  string  $commitName
      * @param  string  $repoName
      */
-    public function __construct(DependencyFile $dependencyFile, string $commitName, string $repoName)
+    public function __construct(DependencyFile $dependencyFile, DependencyUpload $dependencyUpload)
     {
         $this->dependencyFile = $dependencyFile;
-        $this->commitName = $commitName;
-        $this->repoName = $repoName;
+        $this->dependencyUpload = $dependencyUpload;
+
     }
 
     /**
@@ -46,15 +45,14 @@ class DependencyUploadJob implements ShouldQueue
         $debrickedService = new DebrickedApiService();
         Log::info(self::class.'@handle', [
             'dependencyFile' => $this->dependencyFile->id,
-            'commitName' => $this->commitName,
-            'repoName' => $this->repoName,
+            'commitName' => $this->dependencyUpload->commit_name,
+            'repoName' => $this->dependencyUpload->repository_name,
         ]);
 
         // Upload the dependency file using Debricked API
         $debrickedService->uploadDependencyFile(
-            $this->dependencyFile,
-            $this->commitName,
-            $this->repoName
+            $this->dependencyUpload,
+            $this->dependencyFile
         );
 
         Log::info(self::class.'@handle', [

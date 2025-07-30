@@ -4,6 +4,7 @@ namespace App\Notifications;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Notification;
 use Illuminate\Notifications\Messages\SlackMessage;
+use Illuminate\Support\Facades\Log;
 
 class SlackNotification extends Notification
 {
@@ -23,6 +24,10 @@ class SlackNotification extends Notification
 
     public function toSlack($notifiable)
     {
+       Log::info('Sending Slack notification', [
+            'message' => $this->message,
+            'notifiable_id' => $notifiable->id,
+        ]);
         return (new SlackMessage)
             ->content($this->message);
     }

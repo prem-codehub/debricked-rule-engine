@@ -9,6 +9,7 @@ class DependencyUpload extends Model
 {
     protected $fillable = [
         'user_id',
+        'ci_upload_id',
         'commit_name',
         'repository_name',
         'file_paths',

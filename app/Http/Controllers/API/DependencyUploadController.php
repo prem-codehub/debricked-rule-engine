@@ -3,148 +3,56 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
-use App\Services\DebrickedApiService;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 use App\Http\Requests\DependencyUploadRequest;
-use App\Models\DependencyFile;
-use App\Models\DependencyUpload;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
-use App\Jobs\DependencyUploadJob;
+use App\Services\DependencyUploadService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Log;
 
 class DependencyUploadController extends Controller
 {
     /**
-     * Handle file uploads and initiate a vulnerability scan.
+     * Class Constructor
      *
-     * This method processes and stores uploaded files, creates a scan record,
-     * and dispatches background jobs to initiate vulnerability scans via the Debricked API.
+     * Inject the DependencyUploadService using dependency injection.
      *
-     * @param  DependencyUploadRequest  $request  The validated request containing files and metadata.
-     * @return JsonResponse  A response indicating success or failure.
+     * @param DependencyUploadService $uploadService
+     */
+    public function __construct(
+        protected DependencyUploadService $uploadService
+    ) {}
+
+    /**
+     * API: Upload Dependency Files and Initiate Vulnerability Scan
+     *
+     * @command: Handles multi-file upload from frontend.
+     * - Validates and stores each file under `dependencies/` directory.
+     * - Creates a DependencyUpload and DependencyFile entry in DB.
+     * - Triggers async job to scan each file using Debricked API.
+     *
+     * @route: POST /api/dependencies/upload
+     * @request: DependencyUploadRequest (expects `files[]`, `commit_name`, `repository_name`)
+     * @return JsonResponse
      */
     public function store(DependencyUploadRequest $request): JsonResponse
     {
-
-        DB::beginTransaction();
-
         try {
-            $uploadedFiles = $request->file('files');
-            $files = is_array($uploadedFiles) ? $uploadedFiles : [$uploadedFiles];
-
-            // Create a record for the upload
-            $dependencyUpload = DependencyUpload::create([
-                'user_id' => $request->user()->id,
-                'commit_name' => $request->input('commit_name') ?? 'default_commit',
-                'repository_name' => $request->input('repository_name') ?? 'default_repo',
-                'status' => 'pending',
-            ]);
-
-            $paths = [];
-
-            foreach ($files as $file) {
-                if (!$file || !$file->isValid()) {
-                    return response()->json([
-                        'error' => 'One or more uploaded files are invalid.'
-                    ], 422);
-                }
-
-                // Generate unique filename to avoid overwriting
-                $originalName = $file->getClientOriginalName();
-                $uniqueSuffix = now()->timestamp . '_' . Str::random(6);
-                $filename = $uniqueSuffix . '_' . $originalName;
-
-                $path = $file->storeAs('dependencies', $filename);
-
-                if (!$path) {
-                    Log::error('Failed to store file', [
-                        'file' => $originalName
-                    ]);
-
-                    return response()->json([
-                        'error' => 'Failed to store one or more files.'
-                    ], 500);
-                }
-
-                Log::info('File stored successfully', [
-                    'path' => $path,
-                    'file' => $originalName
-                ]);
-
-                // Save metadata for each uploaded file
-                DependencyFile::create([
-                    'dependency_upload_id' => $dependencyUpload->id,
-                    'filename' => $originalName,
-                    'path' => $path,
-                    'vulnerabilities_found' => 0,
-                    'progress' => 0,
-                ]);
-
-                $paths[] = Storage::url($path);
-            }
-
-            // Update the upload record with stored file paths and mark as complete
-            $dependencyUpload->update([
-                'file_paths' => $paths,
-                'status' => 'in_progress',
-            ]);
-
-            DB::commit();
-
-            // Start async scan via Debricked for each file
-            $this->uploadAllFilesForDebrickedApi($dependencyUpload);
+            $result = $this->uploadService->handleUpload($request);
 
             return response()->json([
                 'message' => 'Files uploaded successfully.',
-                'upload_id' => $dependencyUpload->id,
-                'status' => $dependencyUpload->status,
-                'repository' => $dependencyUpload->repository_name,
-                'commit' => $dependencyUpload->commit_name,
-                'files' => $dependencyUpload->files->map(function ($file) {
-                    return [
-                        'filename' => $file->filename,
-                        'path' => Storage::url($file->path),
-                        'progress' => $file->progress,
-                        'vulnerabilities_found' => $file->vulnerabilities_found,
-                    ];
-                }),
+                ...$result
             ]);
 
-
         } catch (\Throwable $e) {
-            DB::rollBack();
-
-            Log::error('Exception during file upload', [
+            Log::error('Upload failed', [
                 'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
+                'trace' => $e->getTraceAsString()
             ]);
 
             return response()->json([
                 'error' => 'An unexpected error occurred during file upload.',
                 'details' => $e->getMessage(),
             ], 500);
-        }
-    }
-
-    /**
-     * Dispatch background jobs to send uploaded files to Debricked API.
-     *
-     * Each file associated with the upload will be queued for scanning.
-     *
-     * @param  DependencyUpload  $dependencyUpload  The upload record containing files to scan.
-     */
-    protected function uploadAllFilesForDebrickedApi(DependencyUpload $dependencyUpload): void
-    {
-        foreach ($dependencyUpload->files as $attachment) {
-            DependencyUploadJob::dispatch(
-                $attachment,
-                $dependencyUpload->commit_name,
-                $dependencyUpload->repository_name
-            )->onQueue('default');
         }
     }
 }

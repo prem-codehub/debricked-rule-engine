@@ -25,7 +25,7 @@ class DependencyScanCommand extends Command
      *
      * @var string
      */
-    protected $description = 'Command description';
+    protected $description = 'Check scan progress of dependency uploads and notify status.';
 
     /**
      * Execute the console command.
@@ -34,75 +34,52 @@ class DependencyScanCommand extends Command
     {
         $this->info('Starting dependency scan...');
 
-        DependencyUpload::with(['user', 'files'])
+        DependencyUpload::with('user')
             ->where('status', '!=', 'completed')
+            ->whereNotNull('ci_upload_id')
             ->chunk(100, function ($uploads) use ($api) {
                 foreach ($uploads as $upload) {
-                    $this->info("Processing upload repository: {$upload->repository_name} commit: {$upload->commit_name} user: {$upload->user?->nam}");
+                    $this->info("Processing upload repository: {$upload->repository_name}, commit: {$upload->commit_name}, user: {$upload->user?->name}");
 
-                    $completed = true;
-                    $totalVulns = 0;
+                    try {
+                        $response = $api->getUploadStatus($upload->ci_upload_id)->json();
 
-                    foreach ($upload->files as $file) {
-                        if (!$file->ci_upload_id) {
-                            continue;
+                        $progress = $response['progress'] ?? 0;
+                        $vulnerabilitiesFound = $response['vulnerabilitiesFound'] ?? 0;
+
+                        $upload->update([
+                            'progress' => $progress,
+                            'vulnerability_count' => $vulnerabilitiesFound,
+                        ]);
+
+                        Log::info('Scan status updated', [
+                            'upload_id' => $upload->id,
+                            'progress' => $progress,
+                            'vulnerabilities_found' => $vulnerabilitiesFound,
+                        ]);
+
+                        $this->info("Upload ID {$upload->id} - Progress: {$progress}% | Vulnerabilities: {$vulnerabilitiesFound}");
+
+                        if ($progress >= 100) {
+                            $upload->update(['status' => 'completed']);
+                            $upload->user?->notify(new ScanReportCompletedNotification($upload));
+
+                            Log::info('Scan completed', ['upload_id' => $upload->id]);
+                        } else {
+                            $upload->user?->notify(new ScanReportStatusNotification($upload));
+                            Log::info('Scan still in progress', ['upload_id' => $upload->id]);
                         }
 
-                        try {
-                            // Check the scan status for the file using Debricked API
-                            $response = $api->getUploadStatus($file->ci_upload_id)->json();
+                        Notification::route('slack', config('services.slack.webhook_url'))
+                            ->route('mail', $upload->user?->email)
+                            ->notify(new SlackNotification("Upload repository: {$upload->repository_name} processed. Total vulnerabilities found: {$vulnerabilitiesFound}"));
 
-                            $file->update([
-                                'progress' => $response['progress'] ?? 0,
-                                'vulnerabilities_found' => $response['vulnerabilitiesFound'] ?? 0,
-                            ]);
-
-                            $totalVulns += $file->vulnerabilities_found;
-
-                            if (($response['progress'] ?? 0) < 100) {
-                                $completed = false;
-                            }
-                            Log::info('Scan status updated for file', [
-                                'file_id' => $file->id,
-                                'progress' => $file->progress,
-                                'vulnerabilities_found' => $file->vulnerabilities_found,
-                            ]);
-
-                            $this->info("File {$file->id} processed. Progress: {$file->progress} Vulnerabilities found: {$file->vulnerabilities_found}");
-                        } catch (\Throwable $e) {
-                            Log::error('Error checking scan status', [
-                                'file_id' => $file->id,
-                                'error' => $e->getMessage(),
-                            ]);
-                        }
-                    }
-
-                    $upload->update([
-                        'vulnerability_count' => $totalVulns,
-                    ]);
-
-                    if ($completed) {
-                        $upload->update(['status' => 'completed']);
-                        Log::info('Scan completed for upload', [
+                    } catch (\Throwable $e) {
+                        Log::error('Error checking scan status', [
                             'upload_id' => $upload->id,
-                            'vulnerability_count' => $totalVulns,
+                            'error' => $e->getMessage(),
                         ]);
-                        // Notify user about completed scan
-                        $upload->user?->notify(new ScanReportCompletedNotification($upload));
-                    } else {
-                        Log::info('Scan in progress for upload', [
-                            'upload_id' => $upload->id,
-                        ]);
-                        // Notify user about scan in progress
-                        $upload->user?->notify(new ScanReportStatusNotification($upload));
                     }
-
-                    // Notify via Slack
-                    Notification::route('slack', config('services.slack.webhook_url'))
-                        ->route('mail', $upload->user?->email)
-                        ->notify(new SlackNotification("Upload repository: {$upload->repository_name} processed. Total vulnerabilities found: {$totalVulns}"));
-
-                    $this->info("Upload repository: {$upload->repository_name} processed. Total vulnerabilities found: {$totalVulns}");
                 }
             });
     }

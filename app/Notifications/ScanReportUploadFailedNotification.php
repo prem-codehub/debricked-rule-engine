@@ -7,6 +7,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
+use Illuminate\Support\Facades\Log;
 
 class ScanReportUploadFailedNotification extends Notification implements ShouldQueue
 {
@@ -40,6 +41,12 @@ class ScanReportUploadFailedNotification extends Notification implements ShouldQ
      */
     public function toMail(object $notifiable): MailMessage
     {
+        Log::info('Preparing scan report upload failed notification', [
+            'file_id' => $this->dependencyFile->id,
+            'error_message' => $this->errorMessage,
+            'user_email' => $notifiable->email,
+        ]);
+
         $dependencyUpload = DependencyUpload::find($this->dependencyFile->dependency_upload_id);
         return (new MailMessage)
             ->greeting('Hello, '.($dependencyUpload?->user?->name ?? 'User').'!')

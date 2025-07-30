@@ -4,6 +4,7 @@ namespace App\Notifications;
 
 use App\Models\DependencyUpload;
 use Illuminate\Bus\Queueable;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
@@ -37,6 +38,11 @@ class ScanReportCompletedNotification extends Notification implements ShouldQueu
      */
     public function toMail(object $notifiable): MailMessage
     {
+        Log::info('Preparing scan report completed notification', [
+            'upload_id' => $this->dependencyUpload->id,
+            'user_email' => $notifiable->email,
+        ]);
+
         $message = (new MailMessage)
             ->greeting('Hello, '.($notifiable->name ?? 'User').'!')
             ->subject('Scan Completed')

@@ -7,6 +7,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
+use Illuminate\Support\Facades\Log;
 
 class ScanReportStatusNotification extends Notification implements ShouldQueue
 {
@@ -37,6 +38,11 @@ class ScanReportStatusNotification extends Notification implements ShouldQueue
      */
     public function toMail(object $notifiable): MailMessage
     {
+        Log::info('Preparing scan report status notification', [
+            'upload_id' => $this->dependencyUpload->id,
+            'user_email' => $notifiable->email,
+        ]);
+
         $message = (new MailMessage)
             ->greeting('Hello, '.($notifiable->name ?? 'User').'!')
             ->subject('Scan In Progress')

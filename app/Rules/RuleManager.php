@@ -5,12 +5,14 @@ use App\Models\DependencyFile;
 use App\Models\DependencyUpload;
 use Illuminate\Support\Facades\Notification;
 use App\Notifications\ScanReportStatusNotification;
-
+use Illuminate\Support\Facades\Log;
 
 class RuleManager
 {
-    public static function evaluate(DependencyFile $upload): void
+    public static function evaluate(DependencyUpload $upload): void
     {
+        Log::info('Evaluating rules for upload', ['upload_id' => $upload->id]);
+
         $rules = static::rules();
 
         foreach ($rules as $rule) {
@@ -22,6 +24,7 @@ class RuleManager
 
     protected static function rules(): array
     {
+        
         return [
             [
                 'trigger' => fn($upload) => $upload->vulnerabilities_count > 5,
