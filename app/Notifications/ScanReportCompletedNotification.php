@@ -38,10 +38,7 @@ class ScanReportCompletedNotification extends Notification implements ShouldQueu
      */
     public function toMail(object $notifiable): MailMessage
     {
-        Log::info('Preparing scan report completed notification', [
-            'upload_id' => $this->dependencyUpload->id,
-            'user_email' => $notifiable->email,
-        ]);
+        Log::info('Preparing scan report completed notification');
 
         $message = (new MailMessage)
             ->greeting('Hello, '.($notifiable->name ?? 'User').'!')

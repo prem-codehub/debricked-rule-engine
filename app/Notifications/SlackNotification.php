@@ -25,8 +25,7 @@ class SlackNotification extends Notification
     public function toSlack($notifiable)
     {
        Log::info('Sending Slack notification', [
-            'message' => $this->message,
-            'notifiable_id' => $notifiable->id,
+            'message' => $this->message
         ]);
         return (new SlackMessage)
             ->content($this->message);
